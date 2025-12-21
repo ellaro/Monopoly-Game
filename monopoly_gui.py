@@ -25,20 +25,20 @@ def build_tile_positions(board_px=660, margin=20):
     tile = usable / 10
     pos = []
 
-    # top
-    for i in range(10):
+    # TOP (11 tiles)
+    for i in range(11):
         pos.append(QPointF(margin + i * tile, margin))
 
-    # right
+    # RIGHT (9 tiles, without corners)
     for i in range(1, 10):
-        pos.append(QPointF(margin + 9 * tile, margin + i * tile))
+        pos.append(QPointF(margin + 10 * tile, margin + i * tile))
 
-    # bottom
-    for i in range(9, -1, -1):
-        pos.append(QPointF(margin + i * tile, margin + 9 * tile))
+    # BOTTOM (11 tiles)
+    for i in range(10, -1, -1):
+        pos.append(QPointF(margin + i * tile, margin + 10 * tile))
 
-    # left
-    for i in range(8, 0, -1):
+    # LEFT (9 tiles, without corners)
+    for i in range(9, 0, -1):
         pos.append(QPointF(margin, margin + i * tile))
 
     return pos, tile
@@ -81,7 +81,9 @@ class BoardView(QGraphicsView):
             text.setPos(pos.x() + 4, pos.y() + 4)
             self.scene.addItem(text)
 
-        self.scene.setSceneRect(0, 0, 720, 720)
+        self.scene.setSceneRect(self.scene.itemsBoundingRect())
+        print("tiles:", len(self.main_window.board.tiles))
+        print("positions:", len(self.tile_positions))
 
     @staticmethod
     def wrap(text, n=12):
