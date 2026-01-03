@@ -3,6 +3,7 @@
 
 import sys
 import random
+from monopoly_model import PropertyTile
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt, QTimer, QPointF
 from PyQt6.QtGui import QBrush, QColor, QPen, QFont
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from monopoly_model import create_us_monopoly_board
+from monopoly_model import Game
 
 
 # --------------------------------------------------
@@ -119,6 +121,7 @@ class SimplePlayer:
         self.color = color
         self.position = 0
         self.money = 1500
+        self.properties = []
 
 
 class GameEngine(QtCore.QObject):
@@ -197,6 +200,7 @@ class MainWindow(QMainWindow):
             self.tokens.append(token)
 
         self.update_status()
+        self.game = Game(self.players, self.board)
 
     def roll(self):
         self.roll_btn.setEnabled(False)
@@ -240,26 +244,166 @@ class MainWindow(QMainWindow):
         self._animate_path(token, player, path, player_idx)
 
     def _animate_path(self, token, player, path, idx, step=0):
-        if step >= len(path):
-            player.position = token.current_tile
-            self.update_status()
-            self.roll_btn.setEnabled(True)
+        if step < len(path):
+            tile = path[step]
+            self.place_token(token, tile, idx)
+            token.current_tile = tile
+
+            QTimer.singleShot(
+                200,
+                lambda: self._animate_path(token, player, path, idx, step + 1)
+            )
             return
 
-        tile = path[step]
-        self.place_token(token, tile, idx)
-        token.current_tile = tile
+        player.position = token.current_tile
 
-        QTimer.singleShot(
-            200,
-            lambda: self._animate_path(token, player, path, idx, step + 1)
-        )
+        tile = self.board.tiles[player.position]
+        tile.on_land(player, self.game)
 
+        if isinstance(self.game.pending_property, PropertyTile):
+            dlg = PropertyCardDialog(self.game.pending_property, player)
+            dlg.exec()
+            self.game.pending_property = None
+
+        self.update_status()
+        self.roll_btn.setEnabled(True)
+
+
+class PropertyCardDialog(QtWidgets.QDialog):
+    def __init__(self, property_tile, player):
+        super().__init__()
+        self.tile = property_tile
+        self.player = player
+
+        self.setWindowTitle(property_tile.name)
+        self.setFixedSize(300, 400)
+
+        layout = QVBoxLayout(self)
+
+        # Color bar
+        color_bar = QLabel()
+        color_bar.setFixedHeight(40)
+        color_bar.setStyleSheet(f"background-color: {property_tile.color}")
+        layout.addWidget(color_bar)
+
+        # Title
+        title = QLabel(property_tile.name)
+        title.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        # Price
+        layout.addWidget(QLabel(f"Price: ${property_tile.price}"))
+
+        # Rent table
+        layout.addWidget(QLabel("Rent:"))
+        for i, rent in enumerate(property_tile.rents):
+            if i == 5:
+                text = f"With Hotel: ${rent}"
+            else:
+                text = f"With {i} house(s): ${rent}"
+            layout.addWidget(QLabel(text))
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        buy_btn = QPushButton("Buy")
+        cancel_btn = QPushButton("Cancel")
+
+        buy_btn.clicked.connect(self.buy)
+        cancel_btn.clicked.connect(self.reject)
+
+        btn_layout.addWidget(buy_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+    def buy(self):
+        if self.tile.buy(self.player):
+            pass
+        self.accept()
+
+
+# Add this to your monopoly_gui.py
+
+# New widget to show player properties
+class PropertyPanel(QWidget):
+    def __init__(self, players):
+        super().__init__()
+        self.players = players
+
+        layout = QVBoxLayout(self)
+
+        title = QLabel("🏠 Properties Owned")
+        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        layout.addWidget(title)
+
+        self.property_labels = []
+        for player in players:
+            player_label = QLabel(f"\n{player.name}:")
+            player_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            player_label.setStyleSheet(f"color: {player.color.name()};")
+            layout.addWidget(player_label)
+
+            props_label = QLabel("No properties yet")
+            props_label.setWordWrap(True)
+            props_label.setStyleSheet("margin-left: 10px;")
+            layout.addWidget(props_label)
+
+            self.property_labels.append((player, props_label))
+
+        layout.addStretch()
+
+    def update_properties(self):
+        for player, label in self.property_labels:
+            if not player.properties:
+                label.setText("No properties yet")
+            else:
+                prop_list = []
+                for prop in player.properties:
+                    houses_info = ""
+                    if hasattr(prop, 'hotel') and prop.hotel:
+                        houses_info = " 🏨"
+                    elif hasattr(prop, 'houses') and prop.houses > 0:
+                        houses_info = f" {'🏠' * prop.houses}"
+                    prop_list.append(f"• {prop.name}{houses_info}")
+                label.setText("\n".join(prop_list))
+
+        # Update your MainWindow.__init__() method
+        # Add this after creating the side layout and before self.status:
+
+        # Property panel
+        self.property_panel = PropertyPanel(self.players)
+        side.addWidget(self.property_panel)
+
+        self.status = QLabel("")
+        side.addWidget(self.status)
+        side.addStretch()
+
+    # Update your MainWindow.update_status() method to also update properties:
+
+    def update_status(self):
+        lines = []
+        for p in self.players:
+            tile = self.board.tiles[p.position].name
+            lines.append(f"{p.name}: ${p.money} ({tile})")
+        self.status.setText("\n".join(lines))
+
+        # Update property panel
+        self.property_panel.update_properties()
+
+    # Also update the property panel after buying in PropertyCardDialog.buy():
+
+    def buy(self):
+        if self.tile.buy(self.player):
+            # Update the property panel in the main window
+            # You'll need to pass main_window reference or use signals
+            pass
+        self.accept()
 
 # --------------------------------------------------
 # Run
 # --------------------------------------------------
 def main():
+    print("APP START")
     app = QApplication(sys.argv)
     w = MainWindow()
     w.show()
