@@ -84,8 +84,6 @@ class BoardView(QGraphicsView):
             self.scene.addItem(text)
 
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
-        print("tiles:", len(self.main_window.board.tiles))
-        print("positions:", len(self.tile_positions))
 
     @staticmethod
     def wrap(text, n=12):
@@ -125,7 +123,7 @@ class SimplePlayer:
 
 
 class GameEngine(QtCore.QObject):
-    moveSteps = QtCore.pyqtSignal(int, int)  # player_idx, steps
+    moveSteps = QtCore.pyqtSignal(int, int)
     diceRolled = QtCore.pyqtSignal(int, int)
 
     def __init__(self, players):
@@ -144,136 +142,60 @@ class GameEngine(QtCore.QObject):
 
 
 # --------------------------------------------------
-# Main Window
+# Property Panel Widget
 # --------------------------------------------------
-class MainWindow(QMainWindow):
-    def __init__(self):
+class PropertyPanel(QWidget):
+    def __init__(self, players):
         super().__init__()
+        self.players = players
 
-        self.setWindowTitle("Monopoly – PyQt6")
-        self.resize(900, 750)
+        layout = QVBoxLayout(self)
 
-        self.board = create_us_monopoly_board()
+        title = QLabel("🏠 Properties Owned")
+        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        layout.addWidget(title)
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
+        self.property_labels = []
+        for player in players:
+            player_label = QLabel(f"\n{player.name}:")
+            player_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            player_label.setStyleSheet(f"color: {player.color.name()};")
+            layout.addWidget(player_label)
 
-        self.board_view = BoardView(self)
-        layout.addWidget(self.board_view, 3)
+            props_label = QLabel("No properties yet")
+            props_label.setWordWrap(True)
+            props_label.setStyleSheet("margin-left: 10px; font-size: 9pt;")
+            layout.addWidget(props_label)
 
-        # Right panel
-        side = QVBoxLayout()
-        layout.addLayout(side, 1)
+            self.property_labels.append((player, props_label))
 
-        self.info = QLabel("🎲 Monopoly Game")
-        side.addWidget(self.info)
+        layout.addStretch()
 
-        self.dice = QLabel("Dice: - -")
-        self.dice.setFont(QFont("Arial", 18))
-        side.addWidget(self.dice)
-
-        self.roll_btn = QPushButton("Roll Dice")
-        self.roll_btn.clicked.connect(self.roll)
-        side.addWidget(self.roll_btn)
-
-        self.status = QLabel("")
-        side.addWidget(self.status)
-        side.addStretch()
-
-        # Game setup
-        self.players = [
-            SimplePlayer("Alice", QColor("blue")),
-            SimplePlayer("Bob", QColor("red"))
-        ]
-
-        self.engine = GameEngine(self.players)
-        self.engine.diceRolled.connect(self.update_dice)
-        self.engine.moveSteps.connect(self.animate_player)
+    def update_properties(self):
+        for player, label in self.property_labels:
+            if not player.properties:
+                label.setText("No properties yet")
+            else:
+                prop_list = []
+                for prop in player.properties:
+                    houses_info = ""
+                    if hasattr(prop, 'hotel') and prop.hotel:
+                        houses_info = " 🏨"
+                    elif hasattr(prop, 'houses') and prop.houses > 0:
+                        houses_info = f" {'🏠' * prop.houses}"
+                    prop_list.append(f"• {prop.name}{houses_info}")
+                label.setText("\n".join(prop_list))
 
 
-        self.tokens = []
-        for i, p in enumerate(self.players):
-            token = PlayerToken(p.color)
-            self.place_token(token, 0, i)
-            self.board_view.scene.addItem(token)
-            self.tokens.append(token)
-
-        self.update_status()
-        self.game = Game(self.players, self.board)
-
-    def roll(self):
-        self.roll_btn.setEnabled(False)
-        self.engine.roll()
-
-    def update_dice(self, d1, d2):
-        self.dice.setText(f"Dice: {d1} + {d2}")
-
-    def move_player(self, idx, pos):
-        token = self.tokens[idx]
-        self.place_token(token, pos, idx)
-        token.current_tile = pos
-        self.update_status()
-        self.roll_btn.setEnabled(True)
-
-    def place_token(self, token, tile_idx, offset):
-        base = self.board_view.tile_positions[tile_idx]
-        center = QPointF(
-            base.x() + self.board_view.tile_size / 2,
-            base.y() + self.board_view.tile_size / 2
-        )
-        token.setPos(center + QPointF(offset * 8, offset * 8))
-
-    def update_status(self):
-        lines = []
-        for p in self.players:
-            tile = self.board.tiles[p.position].name
-            lines.append(f"{p.name}: ${p.money} ({tile})")
-        self.status.setText("\n".join(lines))
-
-    def animate_player(self, player_idx, steps):
-        token = self.tokens[player_idx]
-        player = self.players[player_idx]
-
-        path = []
-        cur = token.current_tile
-        for _ in range(steps):
-            cur = (cur + 1) % 40
-            path.append(cur)
-
-        self._animate_path(token, player, path, player_idx)
-
-    def _animate_path(self, token, player, path, idx, step=0):
-        if step < len(path):
-            tile = path[step]
-            self.place_token(token, tile, idx)
-            token.current_tile = tile
-
-            QTimer.singleShot(
-                200,
-                lambda: self._animate_path(token, player, path, idx, step + 1)
-            )
-            return
-
-        player.position = token.current_tile
-
-        tile = self.board.tiles[player.position]
-        tile.on_land(player, self.game)
-
-        if isinstance(self.game.pending_property, PropertyTile):
-            dlg = PropertyCardDialog(self.game.pending_property, player)
-            dlg.exec()
-            self.game.pending_property = None
-
-        self.update_status()
-        self.roll_btn.setEnabled(True)
-
-
+# --------------------------------------------------
+# Property Card Dialog
+# --------------------------------------------------
 class PropertyCardDialog(QtWidgets.QDialog):
-    def __init__(self, property_tile, player):
+    def __init__(self, property_tile, player, main_window):
         super().__init__()
         self.tile = property_tile
         self.player = player
+        self.main_window = main_window
 
         self.setWindowTitle(property_tile.name)
         self.setFixedSize(300, 400)
@@ -318,59 +240,51 @@ class PropertyCardDialog(QtWidgets.QDialog):
 
     def buy(self):
         if self.tile.buy(self.player):
-            pass
+            self.main_window.update_status()
         self.accept()
 
 
-# Add this to your monopoly_gui.py
-
-# New widget to show player properties
-class PropertyPanel(QWidget):
-    def __init__(self, players):
+# --------------------------------------------------
+# Main Window
+# --------------------------------------------------
+class MainWindow(QMainWindow):
+    def __init__(self):
         super().__init__()
-        self.players = players
 
-        layout = QVBoxLayout(self)
+        self.setWindowTitle("Monopoly – PyQt6")
+        self.resize(900, 750)
 
-        title = QLabel("🏠 Properties Owned")
-        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        layout.addWidget(title)
+        self.board = create_us_monopoly_board()
 
-        self.property_labels = []
-        for player in players:
-            player_label = QLabel(f"\n{player.name}:")
-            player_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-            player_label.setStyleSheet(f"color: {player.color.name()};")
-            layout.addWidget(player_label)
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QHBoxLayout(central)
 
-            props_label = QLabel("No properties yet")
-            props_label.setWordWrap(True)
-            props_label.setStyleSheet("margin-left: 10px;")
-            layout.addWidget(props_label)
+        self.board_view = BoardView(self)
+        layout.addWidget(self.board_view, 3)
 
-            self.property_labels.append((player, props_label))
+        # Right panel
+        side = QVBoxLayout()
+        layout.addLayout(side, 1)
 
-        layout.addStretch()
+        self.info = QLabel("🎲 Monopoly Game")
+        side.addWidget(self.info)
 
-    def update_properties(self):
-        for player, label in self.property_labels:
-            if not player.properties:
-                label.setText("No properties yet")
-            else:
-                prop_list = []
-                for prop in player.properties:
-                    houses_info = ""
-                    if hasattr(prop, 'hotel') and prop.hotel:
-                        houses_info = " 🏨"
-                    elif hasattr(prop, 'houses') and prop.houses > 0:
-                        houses_info = f" {'🏠' * prop.houses}"
-                    prop_list.append(f"• {prop.name}{houses_info}")
-                label.setText("\n".join(prop_list))
+        self.dice = QLabel("Dice: - -")
+        self.dice.setFont(QFont("Arial", 18))
+        side.addWidget(self.dice)
 
-        # Update your MainWindow.__init__() method
-        # Add this after creating the side layout and before self.status:
+        self.roll_btn = QPushButton("Roll Dice")
+        self.roll_btn.clicked.connect(self.roll)
+        side.addWidget(self.roll_btn)
 
-        # Property panel
+        # Game setup
+        self.players = [
+            SimplePlayer("Alice", QColor("blue")),
+            SimplePlayer("Bob", QColor("red"))
+        ]
+
+        # Property panel - עכשיו מחובר נכון!
         self.property_panel = PropertyPanel(self.players)
         side.addWidget(self.property_panel)
 
@@ -378,7 +292,34 @@ class PropertyPanel(QWidget):
         side.addWidget(self.status)
         side.addStretch()
 
-    # Update your MainWindow.update_status() method to also update properties:
+        self.engine = GameEngine(self.players)
+        self.engine.diceRolled.connect(self.update_dice)
+        self.engine.moveSteps.connect(self.animate_player)
+
+        self.tokens = []
+        for i, p in enumerate(self.players):
+            token = PlayerToken(p.color)
+            self.place_token(token, 0, i)
+            self.board_view.scene.addItem(token)
+            self.tokens.append(token)
+
+        self.update_status()
+        self.game = Game(self.players, self.board)
+
+    def roll(self):
+        self.roll_btn.setEnabled(False)
+        self.engine.roll()
+
+    def update_dice(self, d1, d2):
+        self.dice.setText(f"Dice: {d1} + {d2}")
+
+    def place_token(self, token, tile_idx, offset):
+        base = self.board_view.tile_positions[tile_idx]
+        center = QPointF(
+            base.x() + self.board_view.tile_size / 2,
+            base.y() + self.board_view.tile_size / 2
+        )
+        token.setPos(center + QPointF(offset * 8, offset * 8))
 
     def update_status(self):
         lines = []
@@ -387,17 +328,46 @@ class PropertyPanel(QWidget):
             lines.append(f"{p.name}: ${p.money} ({tile})")
         self.status.setText("\n".join(lines))
 
-        # Update property panel
+        # update properties
         self.property_panel.update_properties()
 
-    # Also update the property panel after buying in PropertyCardDialog.buy():
+    def animate_player(self, player_idx, steps):
+        token = self.tokens[player_idx]
+        player = self.players[player_idx]
 
-    def buy(self):
-        if self.tile.buy(self.player):
-            # Update the property panel in the main window
-            # You'll need to pass main_window reference or use signals
-            pass
-        self.accept()
+        path = []
+        cur = token.current_tile
+        for _ in range(steps):
+            cur = (cur + 1) % 40
+            path.append(cur)
+
+        self._animate_path(token, player, path, player_idx)
+
+    def _animate_path(self, token, player, path, idx, step=0):
+        if step < len(path):
+            tile = path[step]
+            self.place_token(token, tile, idx)
+            token.current_tile = tile
+
+            QTimer.singleShot(
+                200,
+                lambda: self._animate_path(token, player, path, idx, step + 1)
+            )
+            return
+
+        player.position = token.current_tile
+
+        tile = self.board.tiles[player.position]
+        tile.on_land(player, self.game)
+
+        if isinstance(self.game.pending_property, PropertyTile):
+            dlg = PropertyCardDialog(self.game.pending_property, player, self)
+            dlg.exec()
+            self.game.pending_property = None
+
+        self.update_status()
+        self.roll_btn.setEnabled(True)
+
 
 # --------------------------------------------------
 # Run
