@@ -12,11 +12,104 @@ from PyQt6.QtWidgets import (
     QGraphicsRectItem, QGraphicsSimpleTextItem,
     QGraphicsEllipseItem, QMainWindow,
     QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel
+    QPushButton, QLabel, QMessageBox
 )
 
-from monopoly_model import create_us_monopoly_board
+from monopoly_model import create_us_monopoly_board_with_cards, try_leave_jail
 from monopoly_model import Game
+
+
+# --------------------------------------------------
+# Build House Dialog
+# --------------------------------------------------
+class BuildHouseDialog(QtWidgets.QDialog):
+    def __init__(self, player, main_window):
+        super().__init__()
+        self.player = player
+        self.main_window = main_window
+
+        self.setWindowTitle("Build Houses")
+        self.setMinimumWidth(400)
+
+        layout = QVBoxLayout(self)
+
+        # Title
+        title = QLabel(f"🏠 Build Houses - {player.name}")
+        title.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        layout.addWidget(title)
+
+        # Money info
+        money = QLabel(f"💰 Your money: ${player.money}")
+        money.setFont(QFont("Arial", 11))
+        layout.addWidget(money)
+
+        layout.addWidget(QLabel("\nYour properties:"))
+
+        # List of buildable properties
+        from monopoly_model import PropertyTile
+        buildable = []
+        for p in player.properties:
+            if isinstance(p, PropertyTile) and hasattr(p, 'color') and p.color:
+                try:
+                    if p.has_monopoly(player):
+                        buildable.append(p)
+                except:
+                    pass
+
+        if not buildable:
+            no_monopoly = QLabel("❌ You don't have any monopolies yet!\nBuy all properties of the same color to build.")
+            no_monopoly.setWordWrap(True)
+            layout.addWidget(no_monopoly)
+        else:
+            for prop in buildable:
+                self.add_property_row(layout, prop)
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn)
+
+    def add_property_row(self, layout, prop):
+        row = QHBoxLayout()
+
+        # Property info
+        houses_text = ""
+        if prop.hotel:
+            houses_text = "🏨 Hotel"
+        elif prop.houses > 0:
+            houses_text = f"{'🏠' * prop.houses} ({prop.houses})"
+        else:
+            houses_text = "No houses"
+
+        info = QLabel(f"{prop.name}\n{houses_text}\nCost: ${prop.house_price}")
+        info.setMinimumWidth(200)
+        row.addWidget(info)
+
+        # Build button
+        build_btn = QPushButton("Build 🏠")
+
+        if prop.hotel:
+            build_btn.setText("Max 🏨")
+            build_btn.setEnabled(False)
+        elif self.player.money < prop.house_price:
+            build_btn.setEnabled(False)
+            build_btn.setText(f"Need ${prop.house_price}")
+        elif not prop.can_build_evenly(self.player):
+            build_btn.setEnabled(False)
+            build_btn.setText("Build evenly")
+
+        build_btn.clicked.connect(lambda: self.build_on_property(prop))
+        row.addWidget(build_btn)
+
+        layout.addLayout(row)
+
+    def build_on_property(self, prop):
+        if prop.build_house(self.player):
+            self.main_window.update_status()
+            # Refresh dialog
+            self.accept()
+            new_dlg = BuildHouseDialog(self.player, self.main_window)
+            new_dlg.exec()
 
 
 # --------------------------------------------------
@@ -120,10 +213,13 @@ class SimplePlayer:
         self.position = 0
         self.money = 1500
         self.properties = []
+        self.in_jail = False
+        self.jail_turns = 0
+        self.get_out_jail_free = 0
 
 
 class GameEngine(QtCore.QObject):
-    moveSteps = QtCore.pyqtSignal(int, int)
+    moveSteps = QtCore.pyqtSignal(int, int, int, int)  # player_idx, steps, dice1, dice2
     diceRolled = QtCore.pyqtSignal(int, int)
 
     def __init__(self, players):
@@ -136,7 +232,7 @@ class GameEngine(QtCore.QObject):
         steps = d1 + d2
 
         self.diceRolled.emit(d1, d2)
-        self.moveSteps.emit(self.turn, steps)
+        self.moveSteps.emit(self.turn, steps, d1, d2)
 
         self.turn = (self.turn + 1) % len(self.players)
 
@@ -173,8 +269,9 @@ class PropertyPanel(QWidget):
 
     def update_properties(self):
         for player, label in self.property_labels:
+            jail_status = " 🚔" if player.in_jail else ""
             if not player.properties:
-                label.setText("No properties yet")
+                label.setText(f"No properties yet{jail_status}")
             else:
                 prop_list = []
                 for prop in player.properties:
@@ -184,7 +281,82 @@ class PropertyPanel(QWidget):
                     elif hasattr(prop, 'houses') and prop.houses > 0:
                         houses_info = f" {'🏠' * prop.houses}"
                     prop_list.append(f"• {prop.name}{houses_info}")
-                label.setText("\n".join(prop_list))
+                label.setText("\n".join(prop_list) + jail_status)
+
+
+# --------------------------------------------------
+# Card Display Dialog
+# --------------------------------------------------
+class CardDialog(QtWidgets.QDialog):
+    def __init__(self, card_text):
+        super().__init__()
+        self.setWindowTitle("Card")
+        self.setFixedSize(350, 200)
+
+        layout = QVBoxLayout(self)
+
+        # Card icon
+        icon = QLabel("🎴")
+        icon.setFont(QFont("Arial", 48))
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(icon)
+
+        # Card text
+        text = QLabel(card_text)
+        text.setFont(QFont("Arial", 12))
+        text.setWordWrap(True)
+        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(text)
+
+        # OK button
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        layout.addWidget(ok_btn)
+
+
+# --------------------------------------------------
+# Jail Options Dialog
+# --------------------------------------------------
+class JailDialog(QtWidgets.QDialog):
+    def __init__(self, player):
+        super().__init__()
+        self.player = player
+        self.choice = None
+
+        self.setWindowTitle("In Jail")
+        self.setFixedSize(300, 250)
+
+        layout = QVBoxLayout(self)
+
+        # Jail icon
+        icon = QLabel("🚔")
+        icon.setFont(QFont("Arial", 48))
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(icon)
+
+        # Info
+        info = QLabel(f"{player.name} is in JAIL!\nTurn {player.jail_turns}/3")
+        info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(info)
+
+        # Options
+        roll_btn = QPushButton("Roll Dice (try for doubles)")
+        roll_btn.clicked.connect(lambda: self.make_choice("roll"))
+        layout.addWidget(roll_btn)
+
+        if player.get_out_jail_free > 0:
+            card_btn = QPushButton(f"Use Get Out of Jail Free Card ({player.get_out_jail_free})")
+            card_btn.clicked.connect(lambda: self.make_choice("card"))
+            layout.addWidget(card_btn)
+
+        if player.money >= 50:
+            pay_btn = QPushButton("Pay $50")
+            pay_btn.clicked.connect(lambda: self.make_choice("pay"))
+            layout.addWidget(pay_btn)
+
+    def make_choice(self, choice):
+        self.choice = choice
+        self.accept()
 
 
 # --------------------------------------------------
@@ -226,10 +398,18 @@ class PropertyCardDialog(QtWidgets.QDialog):
                 text = f"With {i} house(s): ${rent}"
             layout.addWidget(QLabel(text))
 
+        # Money info
+        money_label = QLabel(f"\nYour money: ${player.money}")
+        money_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(money_label)
+
         # Buttons
         btn_layout = QHBoxLayout()
         buy_btn = QPushButton("Buy")
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton("Pass")
+
+        if player.money < property_tile.price:
+            buy_btn.setEnabled(False)
 
         buy_btn.clicked.connect(self.buy)
         cancel_btn.clicked.connect(self.reject)
@@ -254,7 +434,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Monopoly – PyQt6")
         self.resize(900, 750)
 
-        self.board = create_us_monopoly_board()
+        self.board = create_us_monopoly_board_with_cards()
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -278,13 +458,17 @@ class MainWindow(QMainWindow):
         self.roll_btn.clicked.connect(self.roll)
         side.addWidget(self.roll_btn)
 
+        self.build_btn = QPushButton("🏠 Build Houses")
+        self.build_btn.clicked.connect(self.open_build_dialog)
+        side.addWidget(self.build_btn)
+
         # Game setup
         self.players = [
             SimplePlayer("Alice", QColor("blue")),
             SimplePlayer("Bob", QColor("red"))
         ]
 
-        # Property panel - עכשיו מחובר נכון!
+        # Property panel
         self.property_panel = PropertyPanel(self.players)
         side.addWidget(self.property_panel)
 
@@ -307,8 +491,33 @@ class MainWindow(QMainWindow):
         self.game = Game(self.players, self.board)
 
     def roll(self):
+        current_player = self.players[self.engine.turn]
+
+        # Handle jail
+        if current_player.in_jail:
+            dlg = JailDialog(current_player)
+            dlg.exec()
+
+            if dlg.choice == "pay":
+                current_player.money -= 50
+                current_player.in_jail = False
+                current_player.jail_turns = 0
+                self.update_status()
+            elif dlg.choice == "card":
+                current_player.get_out_jail_free -= 1
+                current_player.in_jail = False
+                current_player.jail_turns = 0
+                self.update_status()
+            # If "roll", continue to normal roll
+
         self.roll_btn.setEnabled(False)
         self.engine.roll()
+
+    def open_build_dialog(self):
+        current_player = self.players[self.engine.turn]
+        dlg = BuildHouseDialog(current_player, self)
+        dlg.exec()
+        self.update_status()
 
     def update_dice(self, d1, d2):
         self.dice.setText(f"Dice: {d1} + {d2}")
@@ -325,25 +534,39 @@ class MainWindow(QMainWindow):
         lines = []
         for p in self.players:
             tile = self.board.tiles[p.position].name
-            lines.append(f"{p.name}: ${p.money} ({tile})")
+            jail = " 🚔" if p.in_jail else ""
+            cards = f" 🎟️x{p.get_out_jail_free}" if p.get_out_jail_free > 0 else ""
+            lines.append(f"{p.name}: ${p.money} ({tile}){jail}{cards}")
         self.status.setText("\n".join(lines))
 
-        # update properties
         self.property_panel.update_properties()
 
-    def animate_player(self, player_idx, steps):
+    def animate_player(self, player_idx, steps, dice1, dice2):
         token = self.tokens[player_idx]
         player = self.players[player_idx]
 
+        # Check if in jail
+        if player.in_jail:
+            can_move = try_leave_jail(player, dice1, dice2)
+            if not can_move:
+                self.update_status()
+                self.roll_btn.setEnabled(True)
+                return
+
         path = []
         cur = token.current_tile
+        passed_go = False
+
         for _ in range(steps):
             cur = (cur + 1) % 40
             path.append(cur)
+            # בדיקה אם עברנו את GO
+            if cur == 0:
+                passed_go = True
 
-        self._animate_path(token, player, path, player_idx)
+        self._animate_path(token, player, path, player_idx, passed_go)
 
-    def _animate_path(self, token, player, path, idx, step=0):
+    def _animate_path(self, token, player, path, idx, passed_go=False, step=0):
         if step < len(path):
             tile = path[step]
             self.place_token(token, tile, idx)
@@ -351,15 +574,27 @@ class MainWindow(QMainWindow):
 
             QTimer.singleShot(
                 200,
-                lambda: self._animate_path(token, player, path, idx, step + 1)
+                lambda: self._animate_path(token, player, path, idx, passed_go, step + 1)
             )
             return
 
         player.position = token.current_tile
 
+        # תשלום עבור מעבר ב-GO
+        if passed_go:
+            player.money += 200
+            print(f"💰 {player.name} passed GO and collected $200!")
+
         tile = self.board.tiles[player.position]
         tile.on_land(player, self.game)
 
+        # Show card if there was one
+        if hasattr(self.game, 'last_card') and self.game.last_card:
+            card_dlg = CardDialog(self.game.last_card.text)
+            card_dlg.exec()
+            self.game.last_card = None
+
+        # Show property purchase dialog
         if isinstance(self.game.pending_property, PropertyTile):
             dlg = PropertyCardDialog(self.game.pending_property, player, self)
             dlg.exec()
