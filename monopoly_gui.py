@@ -465,7 +465,9 @@ class MainWindow(QMainWindow):
         # Game setup
         self.players = [
             SimplePlayer("Alice", QColor("blue")),
-            SimplePlayer("Bob", QColor("red"))
+            SimplePlayer("Bob", QColor("red")),
+            SimplePlayer("Charlie", QColor("green")),
+            SimplePlayer("Diana", QColor("purple"))
         ]
 
         # Property panel
