@@ -171,6 +171,11 @@ class BoardView(QGraphicsView):
             rect.setBrush(QBrush(QColor("white")))
             self.scene.addItem(rect)
 
+            if hasattr(tile, 'color') and tile.color:
+                color_rect = QGraphicsRectItem(pos.x(), pos.y(), self.tile_size, 15)
+                color_rect.setBrush(QBrush(QColor(tile.color)))  # כאן ה-sienna/lightblue נכנסים לפעולה
+                self.scene.addItem(color_rect)
+
             text = QGraphicsSimpleTextItem(self.wrap(tile.name))
             text.setFont(font)
             text.setPos(pos.x() + 4, pos.y() + 4)
