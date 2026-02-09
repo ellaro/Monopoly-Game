@@ -158,27 +158,59 @@ class BoardView(QGraphicsView):
     def draw_board(self):
         self.scene.clear()
         font = QFont("Arial", 8)
-        pen = QPen(Qt.GlobalColor.black)
+        pen = QPen(Qt.GlobalColor.black, 1)  # מסגרת שחורה דקה
 
         for i, pos in enumerate(self.tile_positions):
             tile = self.main_window.board.tiles[i]
 
-            rect = QGraphicsRectItem(
-                pos.x(), pos.y(),
-                self.tile_size, self.tile_size
-            )
-            rect.setPen(pen)
-            rect.setBrush(QBrush(QColor("white")))
+            # 1. ציור המלבן הראשי
+            rect = QGraphicsRectItem(pos.x(), pos.y(), self.tile_size, self.tile_size)
+
+            if hasattr(tile, 'owner') and tile.owner:
+                # אם יש בעלים, נשתמש בצבע שלו למסגרת ונעבה אותה (עובי 4)
+                owner_pen = QPen(QColor(tile.owner.color), 4)
+                rect.setPen(owner_pen)
+
+                # אופציונלי: צביעת הרקע בגוון בהיר מאוד של צבע השחקן
+                bg_color = QColor(tile.owner.color)
+                bg_color.setAlpha(30)  # שקיפות (0-255)
+                rect.setBrush(QBrush(bg_color))
+            else:
+                # אם אין בעלים, מסגרת שחורה רגילה
+                rect.setPen(QPen(Qt.GlobalColor.black, 1))
+                rect.setBrush(QBrush(QColor("white")))
+
             self.scene.addItem(rect)
+
+            # 2. ציור פס הצבע ובתים
+            y_text_offset = 4  # ברירת מחדל לטקסט
 
             if hasattr(tile, 'color') and tile.color:
                 color_rect = QGraphicsRectItem(pos.x(), pos.y(), self.tile_size, 15)
-                color_rect.setBrush(QBrush(QColor(tile.color)))  # כאן ה-sienna/lightblue נכנסים לפעולה
+                color_rect.setBrush(QBrush(QColor(tile.color)))
+                color_rect.setPen(pen)
                 self.scene.addItem(color_rect)
 
+                y_text_offset = 18  # מורידים את הטקסט מתחת לפס הצבע
+
+                if isinstance(tile, PropertyTile):
+                    # מלון
+                    if hasattr(tile, 'hotel') and tile.hotel:
+                        hotel_text = QGraphicsSimpleTextItem("🏨")
+                        hotel_text.setFont(QFont("Arial", 10))
+                        hotel_text.setPos(pos.x() + self.tile_size - 22, pos.y() + 1)
+                        self.scene.addItem(hotel_text)
+                    # בתים
+                    elif hasattr(tile, 'houses') and tile.houses > 0:
+                        houses_display = QGraphicsSimpleTextItem("🏠" * tile.houses)
+                        houses_display.setFont(QFont("Arial", 7))
+                        houses_display.setPos(pos.x() + 2, pos.y() + 2)
+                        self.scene.addItem(houses_display)
+
+            # 3. ציור שם המשבצת
             text = QGraphicsSimpleTextItem(self.wrap(tile.name))
             text.setFont(font)
-            text.setPos(pos.x() + 4, pos.y() + 4)
+            text.setPos(pos.x() + 4, pos.y() + y_text_offset)  # המיקום משתנה לפי הצבע
             self.scene.addItem(text)
 
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
@@ -496,6 +528,7 @@ class MainWindow(QMainWindow):
 
         self.update_status()
         self.game = Game(self.players, self.board)
+        self.update_status()
 
     def roll(self):
         current_player = self.players[self.engine.turn]
@@ -578,7 +611,6 @@ class MainWindow(QMainWindow):
             tile = path[step]
             self.place_token(token, tile, idx)
             token.current_tile = tile
-
             QTimer.singleShot(
                 200,
                 lambda: self._animate_path(token, player, path, idx, passed_go, step + 1)
@@ -599,6 +631,16 @@ class MainWindow(QMainWindow):
         if hasattr(self.game, 'last_card') and self.game.last_card:
             card_dlg = CardDialog(self.game.last_card.text)
             card_dlg.exec()
+
+            # בדיקה: האם הכרטיס הזיז את השחקן למקום אחר? (למשל "לך ל-Boardwalk")
+            if player.position != token.current_tile:
+                token.current_tile = player.position
+                self.place_token(token, player.position, idx)
+
+                # אופציונלי: הפעלת הלוגיקה של המשבצת החדשה (אם נחתנו על נכס אחרי הכרטיס)
+                new_tile = self.board.tiles[player.position]
+                new_tile.on_land(player, self.game)
+
             self.game.last_card = None
 
         # Show property purchase dialog
