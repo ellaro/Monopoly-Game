@@ -253,6 +253,7 @@ class SimplePlayer:
         self.in_jail = False
         self.jail_turns = 0
         self.get_out_jail_free = 0
+        self.doubles_count = 0
 
 
 class GameEngine(QtCore.QObject):
@@ -267,11 +268,13 @@ class GameEngine(QtCore.QObject):
     def roll(self):
         d1, d2 = random.randint(1, 6), random.randint(1, 6)
         steps = d1 + d2
+        is_double = (d1 == d2)
 
         self.diceRolled.emit(d1, d2)
         self.moveSteps.emit(self.turn, steps, d1, d2)
 
-        self.turn = (self.turn + 1) % len(self.players)
+        if not is_double:
+            self.turn = (self.turn + 1) % len(self.players)
 
 
 # --------------------------------------------------
@@ -527,6 +530,7 @@ class MainWindow(QMainWindow):
             self.tokens.append(token)
 
         self.update_status()
+        self.last_dice = (0, 0)
         self.game = Game(self.players, self.board)
         self.update_status()
 
@@ -560,6 +564,7 @@ class MainWindow(QMainWindow):
         self.update_status()
 
     def update_dice(self, d1, d2):
+        self.last_dice = (d1, d2)
         self.dice.setText(f"Dice: {d1} + {d2}")
 
     def place_token(self, token, tile_idx, offset):
@@ -627,6 +632,10 @@ class MainWindow(QMainWindow):
         tile = self.board.tiles[player.position]
         tile.on_land(player, self.game)
 
+        if player.position != token.current_tile:
+            token.current_tile = player.position
+            self.place_token(token, player.position, idx)
+
         # Show card if there was one
         if hasattr(self.game, 'last_card') and self.game.last_card:
             card_dlg = CardDialog(self.game.last_card.text)
@@ -650,6 +659,31 @@ class MainWindow(QMainWindow):
             self.game.pending_property = None
 
         self.update_status()
+
+        d1, d2 = self.last_dice
+        is_double = (d1 == d2)
+
+        if is_double and not player.in_jail:
+            player.doubles_count += 1
+            print(f"🎲 {player.name} rolled DOUBLES! ({d1},{d2}) - Count: {player.doubles_count}")
+
+            if player.doubles_count >= 3:
+                # 3 דאבלים ברצף = כלא!
+                print(f"🚔 {player.name} rolled 3 doubles in a row - GO TO JAIL!")
+                from monopoly_model import go_to_jail
+                go_to_jail(player)
+                token.current_tile = player.position
+                self.place_token(token, player.position, idx)
+                player.doubles_count = 0
+                self.engine.turn = (self.engine.turn + 1) % len(self.players)
+                self.update_status()
+            else:
+                # תור נוסף!
+                print(f"✨ {player.name} gets another turn!")
+        else:
+            # לא דאבל - אפס את המונה
+            player.doubles_count = 0
+
         self.roll_btn.setEnabled(True)
 
 
