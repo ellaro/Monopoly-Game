@@ -106,6 +106,7 @@ class BuildHouseDialog(QtWidgets.QDialog):
     def build_on_property(self, prop):
         if prop.build_house(self.player):
             self.main_window.update_status()
+            self.main_window.board_view.draw_board()
             # Refresh dialog
             self.accept()
             new_dlg = BuildHouseDialog(self.player, self.main_window)
@@ -156,7 +157,9 @@ class BoardView(QGraphicsView):
         self.draw_board()
 
     def draw_board(self):
-        self.scene.clear()
+        items_to_remove = [item for item in self.scene.items() if not isinstance(item, PlayerToken)]
+        for item in items_to_remove:
+            self.scene.removeItem(item)
         font = QFont("Arial", 8)
         pen = QPen(Qt.GlobalColor.black, 1)  # מסגרת שחורה דקה
 
@@ -300,6 +303,7 @@ class PropertyPanel(QWidget):
 
             props_label = QLabel("No properties yet")
             props_label.setWordWrap(True)
+            props_label.setTextFormat(Qt.TextFormat.RichText)
             props_label.setStyleSheet("margin-left: 10px; font-size: 9pt;")
             layout.addWidget(props_label)
 
@@ -320,9 +324,25 @@ class PropertyPanel(QWidget):
                         houses_info = " 🏨"
                     elif hasattr(prop, 'houses') and prop.houses > 0:
                         houses_info = f" {'🏠' * prop.houses}"
-                    prop_list.append(f"• {prop.name}{houses_info}")
-                label.setText("\n".join(prop_list) + jail_status)
 
+                    color_emoji = {
+                        'sienna': '🟫',  # חום
+                        'lightblue': '🔵',  # תכלת
+                        'pink': '🎀',  # ורוד
+                        'orange': '🟠',  # כתום
+                        'red': '🔴',  # אדום
+                        'yellow': '🟡',  # צהוב
+                        'green': '🟢',  # ירוק
+                        'darkblue': '🔵'  # כחול כהה
+                    }
+
+                    color_marker = ""
+                    if hasattr(prop, 'color') and prop.color:
+                        color_marker = color_emoji.get(prop.color, '⚪') + " "
+
+                    prop_list.append(f"{color_marker}{prop.name}{houses_info}")
+
+                label.setText("\n".join(prop_list) + jail_status)
 
 # --------------------------------------------------
 # Card Display Dialog
