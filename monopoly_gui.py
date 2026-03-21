@@ -184,19 +184,13 @@ class BoardView(QGraphicsView):
             rect = QGraphicsRectItem(pos.x(), pos.y(), self.tile_size, self.tile_size)
 
             if hasattr(tile, 'owner') and tile.owner:
-                # אם יש בעלים, נשתמש בצבע שלו למסגרת ונעבה אותה (עובי 4)
                 owner_pen = QPen(QColor(tile.owner.color), 4)
                 rect.setPen(owner_pen)
-
-                # אופציונלי: צביעת הרקע בגוון בהיר מאוד של צבע השחקן
-                bg_color = QColor(tile.owner.color)
-                bg_color.setAlpha(30)  # שקיפות (0-255)
-                rect.setBrush(QBrush(bg_color))
+                rect.setBrush(QBrush(QColor("white")))  # ← רקע לבן!
             else:
                 # אם אין בעלים, מסגרת שחורה רגילה
                 rect.setPen(QPen(Qt.GlobalColor.black, 1))
                 rect.setBrush(QBrush(QColor("white")))
-
             self.scene.addItem(rect)
 
             # colors and houses
@@ -647,30 +641,31 @@ class MainWindow(QMainWindow):
         # תשלום עבור מעבר ב-GO
         if passed_go:
             player.money += 200
-            print(f"💰 {player.name} passed GO and collected $200!")
+            print(f"{player.name} passed GO and collected $200!")
 
         tile = self.board.tiles[player.position]
         tile.on_land(player, self.game)
 
-        if player.position != token.current_tile:
-            token.current_tile = player.position
-            self.place_token(token, player.position, idx)
+        # Keep whether on_land moved the player before we potentially sync token/UI.
+        moved_after_land = (player.position != token.current_tile)
 
         # Show card if there was one
         if hasattr(self.game, 'last_card') and self.game.last_card:
             card_dlg = CardDialog(self.game.last_card.text)
             card_dlg.exec()
 
-            # בדיקה: האם הכרטיס הזיז את השחקן למקום אחר? (למשל "לך ל-Boardwalk")
-            if player.position != token.current_tile:
+            # If the card moved the player (e.g. Advance to Boardwalk), sync token and
+            # resolve landing on the NEW tile so pending property purchase can be set.
+            if moved_after_land:
                 token.current_tile = player.position
                 self.place_token(token, player.position, idx)
-
-                # אופציונלי: הפעלת הלוגיקה של המשבצת החדשה (אם נחתנו על נכס אחרי הכרטיס)
                 new_tile = self.board.tiles[player.position]
                 new_tile.on_land(player, self.game)
 
             self.game.last_card = None
+        elif moved_after_land:
+            token.current_tile = player.position
+            self.place_token(token, player.position, idx)
 
         # Show property purchase dialog
         if isinstance(self.game.pending_property, PropertyTile):
@@ -685,11 +680,11 @@ class MainWindow(QMainWindow):
 
         if is_double and not player.in_jail:
             player.doubles_count += 1
-            print(f"🎲 {player.name} rolled DOUBLES! ({d1},{d2}) - Count: {player.doubles_count}")
+            print(f"{player.name} rolled DOUBLES! ({d1},{d2}) - Count: {player.doubles_count}")
 
             if player.doubles_count >= 3:
                 # 3 דאבלים ברצף = כלא!
-                print(f"🚔 {player.name} rolled 3 doubles in a row - GO TO JAIL!")
+                print(f"{player.name} rolled 3 doubles in a row - GO TO JAIL!")
                 from monopoly_model import go_to_jail
                 go_to_jail(player)
                 token.current_tile = player.position
@@ -698,10 +693,9 @@ class MainWindow(QMainWindow):
                 self.engine.turn = (self.engine.turn + 1) % len(self.players)
                 self.update_status()
             else:
-                # תור נוסף!
-                print(f"✨ {player.name} gets another turn!")
+                # another round
+                print(f" {player.name} gets another turn!")
         else:
-            # לא דאבל - אפס את המונה
             player.doubles_count = 0
 
         self.roll_btn.setEnabled(True)

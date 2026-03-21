@@ -58,7 +58,7 @@ class PropertyTile(Tile):
             player.money -= self.house_price
             self.houses = 0
             self.hotel = True
-            print(f"🏨 {player.name} built a HOTEL on {self.name}!")
+            print(f"{player.name} built a HOTEL on {self.name}!")
             return True
 
         # Build house
@@ -67,21 +67,20 @@ class PropertyTile(Tile):
 
         # Check monopoly
         if not self.has_monopoly(player):
-            print(f"❌ Need monopoly to build on {self.name}")
+            print(f"Need monopoly to build on {self.name}")
             return False
 
         # Check even building rule
         if not self.can_build_evenly(player):
-            print(f"❌ Must build evenly across all properties in {self.color}")
+            print(f"Must build evenly across all properties in {self.color}")
             return False
 
         player.money -= self.house_price
         self.houses += 1
-        print(f"🏠 {player.name} built house #{self.houses} on {self.name}!")
+        print(f"{player.name} built house #{self.houses} on {self.name}!")
         return True
 
     def has_monopoly(self, player):
-        """בדיקה אם לשחקן יש את כל הנכסים באותו צבע"""
         if not self.color:
             return False
 
@@ -105,7 +104,7 @@ class PropertyTile(Tile):
         has_monopoly = len(same_color) == required
 
         if has_monopoly:
-            print(f"✅ {player.name} has monopoly on {self.color}")
+            print(f"{player.name} has monopoly on {self.color}")
 
         return has_monopoly
 
@@ -125,19 +124,19 @@ class PropertyTile(Tile):
         print(f"Owner: {self.owner.name if self.owner else 'None'}")
 
         if self.owner is None:
-            print(f"✅ {self.name} is available for purchase!")
+            print(f"{self.name} is available for purchase!")
             game.pending_property = self
         elif self.owner != player:
             try:
                 rent = self.get_rent()
-                print(f"💰 Rent calculated: ${rent}")
+                print(f"Rent calculated: ${rent}")
                 player.money -= rent
                 self.owner.money += rent
-                print(f"✅ {player.name} paid ${rent} rent to {self.owner.name}")
+                print(f"{player.name} paid ${rent} rent to {self.owner.name}")
             except Exception as e:
-                print(f"❌ ERROR paying rent: {e}")
+                print(f"ERROR paying rent: {e}")
         else:
-            print(f"✅ {player.name} owns this property")
+            print(f"{player.name} owns this property")
 
 
 class RailroadTile(PropertyTile):
@@ -185,19 +184,19 @@ class UtilityTile(PropertyTile):
         print(f"Owner: {self.owner.name if self.owner else 'None'}")
 
         if self.owner is None:
-            print(f"✅ {self.name} is available for purchase!")
+            print(f"{self.name} is available for purchase!")
             game.pending_property = self
         elif self.owner != player:
             try:
                 rent = self.get_rent(dice_roll=7)
-                print(f"💰 Rent calculated: ${rent}")
+                print(f"Rent calculated: ${rent}")
                 player.money -= rent
                 self.owner.money += rent
-                print(f"✅ {player.name} paid ${rent} rent to {self.owner.name}")
+                print(f"{player.name} paid ${rent} rent to {self.owner.name}")
             except Exception as e:
-                print(f"❌ ERROR paying rent: {e}")
+                print(f"ERROR paying rent: {e}")
         else:
-            print(f"✅ {player.name} owns this property")
+            print(f"{player.name} owns this property")
 
 
 class SpecialTile(Tile):
@@ -219,12 +218,12 @@ class Card:
         self.action = action
 
     def execute(self, player, game):
-        print(f"📜 Card: {self.text}")
+        print(f"Card: {self.text}")
         self.action(player, game)
 
 
 def create_chance_cards():
-    """כרטיסי צ'אנס"""
+
     cards = [
         Card("Advance to GO - Collect $200",
              lambda p, g: (setattr(p, 'position', 0), setattr(p, 'money', p.money + 200))),
@@ -305,7 +304,7 @@ def go_to_jail(player):
     player.position = 10  # Jail position
     player.in_jail = True
     player.jail_turns = 0
-    print(f"🚔 {player.name} goes to JAIL!")
+    print(f"{player.name} goes to JAIL!")
 
 
 def try_leave_jail(player, dice1, dice2):
@@ -315,14 +314,14 @@ def try_leave_jail(player, dice1, dice2):
 
     # אפשרות 1: זרק דאבל
     if dice1 == dice2:
-        print(f"🎲 {player.name} rolled doubles! Gets out of jail!")
+        print(f"{player.name} rolled doubles! Gets out of jail!")
         player.in_jail = False
         player.jail_turns = 0
         return True
 
     # אפשרות 2: השתמש בכרטיס "צא מהכלא"
     if player.get_out_jail_free > 0:
-        print(f"🎟️ {player.name} uses 'Get out of Jail Free' card!")
+        print(f"{player.name} uses 'Get out of Jail Free' card!")
         player.get_out_jail_free -= 1
         player.in_jail = False
         player.jail_turns = 0
@@ -331,13 +330,13 @@ def try_leave_jail(player, dice1, dice2):
     # אפשרות 3: שלם $50
     player.jail_turns += 1
     if player.jail_turns >= 3:
-        print(f"💰 {player.name} must pay $50 to leave jail")
+        print(f"{player.name} must pay $50 to leave jail")
         player.money -= 50
         player.in_jail = False
         player.jail_turns = 0
         return True
 
-    print(f"🔒 {player.name} stays in jail (turn {player.jail_turns}/3)")
+    print(f"{player.name} stays in jail (turn {player.jail_turns}/3)")
     return False
 
 
