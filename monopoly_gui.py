@@ -3,6 +3,7 @@
 
 import sys
 import random
+import html
 from monopoly_model import PropertyTile
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt, QTimer, QPointF
@@ -17,6 +18,19 @@ from PyQt6.QtWidgets import (
 
 from monopoly_model import create_us_monopoly_board_with_cards, try_leave_jail
 from monopoly_model import Game
+
+
+PROPERTY_COLOR_MAP = {
+    "sienna": "#8B4513",
+    "lightblue": "#87CEFA",
+    "pink": "#FF69B4",
+    "orange": "#FFA500",
+    "red": "#E53935",
+    "yellow": "#FDD835",
+    "green": "#43A047",
+    "darkblue": "#1E3A8A",
+    "blue": "#1E88E5",
+}
 
 
 # --------------------------------------------------
@@ -185,8 +199,8 @@ class BoardView(QGraphicsView):
 
             self.scene.addItem(rect)
 
-            # 2. ציור פס הצבע ובתים
-            y_text_offset = 4  # ברירת מחדל לטקסט
+            # colors and houses
+            y_text_offset = 4
 
             if hasattr(tile, 'color') and tile.color:
                 color_rect = QGraphicsRectItem(pos.x(), pos.y(), self.tile_size, 15)
@@ -194,26 +208,26 @@ class BoardView(QGraphicsView):
                 color_rect.setPen(pen)
                 self.scene.addItem(color_rect)
 
-                y_text_offset = 18  # מורידים את הטקסט מתחת לפס הצבע
+                y_text_offset = 18
 
                 if isinstance(tile, PropertyTile):
-                    # מלון
+                    # Hotel
                     if hasattr(tile, 'hotel') and tile.hotel:
                         hotel_text = QGraphicsSimpleTextItem("🏨")
                         hotel_text.setFont(QFont("Arial", 10))
                         hotel_text.setPos(pos.x() + self.tile_size - 22, pos.y() + 1)
                         self.scene.addItem(hotel_text)
-                    # בתים
+                    # Houses
                     elif hasattr(tile, 'houses') and tile.houses > 0:
                         houses_display = QGraphicsSimpleTextItem("🏠" * tile.houses)
                         houses_display.setFont(QFont("Arial", 7))
                         houses_display.setPos(pos.x() + 2, pos.y() + 2)
                         self.scene.addItem(houses_display)
 
-            # 3. ציור שם המשבצת
+            # 3.Name of the Tile
             text = QGraphicsSimpleTextItem(self.wrap(tile.name))
             text.setFont(font)
-            text.setPos(pos.x() + 4, pos.y() + y_text_offset)  # המיקום משתנה לפי הצבע
+            text.setPos(pos.x() + 4, pos.y() + y_text_offset)  #
             self.scene.addItem(text)
 
         self.scene.setSceneRect(self.scene.itemsBoundingRect())
@@ -232,9 +246,7 @@ class BoardView(QGraphicsView):
         return "\n".join(lines)
 
 
-# --------------------------------------------------
 # Player Token
-# --------------------------------------------------
 class PlayerToken(QGraphicsEllipseItem):
     def __init__(self, color):
         super().__init__(-10, -10, 20, 20)
@@ -243,9 +255,7 @@ class PlayerToken(QGraphicsEllipseItem):
         self.current_tile = 0
 
 
-# --------------------------------------------------
 # Simple Player + Engine
-# --------------------------------------------------
 class SimplePlayer:
     def __init__(self, name, color):
         self.name = name
@@ -279,10 +289,7 @@ class GameEngine(QtCore.QObject):
         if not is_double:
             self.turn = (self.turn + 1) % len(self.players)
 
-
-# --------------------------------------------------
 # Property Panel Widget
-# --------------------------------------------------
 class PropertyPanel(QWidget):
     def __init__(self, players):
         super().__init__()
@@ -325,24 +332,17 @@ class PropertyPanel(QWidget):
                     elif hasattr(prop, 'houses') and prop.houses > 0:
                         houses_info = f" {'🏠' * prop.houses}"
 
-                    color_emoji = {
-                        'sienna': '🟫',  # חום
-                        'lightblue': '🔵',  # תכלת
-                        'pink': '🎀',  # ורוד
-                        'orange': '🟠',  # כתום
-                        'red': '🔴',  # אדום
-                        'yellow': '🟡',  # צהוב
-                        'green': '🟢',  # ירוק
-                        'darkblue': '🔵'  # כחול כהה
-                    }
-
-                    color_marker = ""
+                    color_hex = "#9E9E9E"  # Neutral fallback
                     if hasattr(prop, 'color') and prop.color:
-                        color_marker = color_emoji.get(prop.color, '⚪') + " "
+                        color_hex = PROPERTY_COLOR_MAP.get(prop.color.lower(), color_hex)
 
-                    prop_list.append(f"{color_marker}{prop.name}{houses_info}")
+                    # Uniform circular marker rendered by QLabel RichText.
+                    circle_html = f'<span style="color:{color_hex}; font-weight:700;">&#9679;</span>&nbsp;'
+                    safe_name = html.escape(prop.name)
+                    prop_list.append(f"{circle_html}{safe_name}{houses_info}")
 
-                label.setText("\n".join(prop_list) + jail_status)
+                label.setText("<br>".join(prop_list) + jail_status)
+
 
 # --------------------------------------------------
 # Card Display Dialog
@@ -720,3 +720,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
