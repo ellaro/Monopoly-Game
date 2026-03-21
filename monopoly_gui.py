@@ -275,13 +275,9 @@ class GameEngine(QtCore.QObject):
     def roll(self):
         d1, d2 = random.randint(1, 6), random.randint(1, 6)
         steps = d1 + d2
-        is_double = (d1 == d2)
 
         self.diceRolled.emit(d1, d2)
         self.moveSteps.emit(self.turn, steps, d1, d2)
-
-        if not is_double:
-            self.turn = (self.turn + 1) % len(self.players)
 
 # Property Panel Widget
 class PropertyPanel(QWidget):
@@ -478,6 +474,66 @@ class PropertyCardDialog(QtWidgets.QDialog):
         self.accept()
 
 
+class RentPaymentDialog(QtWidgets.QDialog):
+    def __init__(self, payer, receiver, amount, property_tile):
+        super().__init__()
+        self.setWindowTitle("Rent Payment")
+        self.setFixedSize(460, 320)
+
+        property_color = getattr(property_tile, "color", None) or "#9E9E9E"
+
+        layout = QVBoxLayout(self)
+
+        title = QLabel("Rent Paid")
+        title.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        property_info = QLabel(f"Property: {property_tile.name}")
+        property_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        property_info.setStyleSheet(
+            f"background-color: {property_color}; color: white; font-weight: bold; padding: 8px; border-radius: 6px;"
+        )
+        layout.addWidget(property_info)
+
+        amount_label = QLabel(f"${amount}")
+        amount_label.setFont(QFont("Arial", 28, QFont.Weight.Bold))
+        amount_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        amount_label.setStyleSheet("color: #1b5e20; margin: 10px 0;")
+        layout.addWidget(amount_label)
+
+        transfer_layout = QHBoxLayout()
+
+        payer_box = QLabel(
+            f"Payer\n{payer.name}\nRemaining: ${payer.money}"
+        )
+        payer_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        payer_box.setStyleSheet(
+            f"border: 2px solid {payer.color.name()}; border-radius: 8px; padding: 10px;"
+        )
+
+        arrow = QLabel("->")
+        arrow.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        receiver_box = QLabel(
+            f"Receiver\n{receiver.name}\nRemaining: ${receiver.money}"
+        )
+        receiver_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        receiver_box.setStyleSheet(
+            f"border: 2px solid {receiver.color.name()}; border-radius: 8px; padding: 10px;"
+        )
+
+        transfer_layout.addWidget(payer_box)
+        transfer_layout.addWidget(arrow)
+        transfer_layout.addWidget(receiver_box)
+        layout.addLayout(transfer_layout)
+
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        layout.addWidget(ok_btn)
+
+
 # --------------------------------------------------
 # Main Window
 # --------------------------------------------------
@@ -503,6 +559,11 @@ class MainWindow(QMainWindow):
 
         self.info = QLabel("🎲 Monopoly Game")
         side.addWidget(self.info)
+
+        self.turn_label = QLabel()
+        self.turn_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.turn_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        side.addWidget(self.turn_label)
 
         self.dice = QLabel("Dice: - -")
         self.dice.setFont(QFont("Arial", 18))
@@ -543,13 +604,42 @@ class MainWindow(QMainWindow):
             self.board_view.scene.addItem(token)
             self.tokens.append(token)
 
+        self.update_turn_label()
         self.update_status()
         self.last_dice = (0, 0)
         self.game = Game(self.players, self.board)
+        self.update_turn_label()
         self.update_status()
+
+    def update_turn_label(self):
+        current_player = self.players[self.engine.turn]
+        self.turn_label.setText(f"Current Turn: {current_player.name}")
+        self.turn_label.setStyleSheet(
+            f"color: {current_player.color.name()}; font-weight: bold;"
+        )
+
+    def _get_rent_event(self, payer, landed_tile, payer_money_before, owner_money_before):
+        owner = getattr(landed_tile, "owner", None)
+        if owner is None or owner == payer or owner_money_before is None:
+            return None
+
+        paid_amount = payer_money_before - payer.money
+        received_amount = owner.money - owner_money_before
+        rent_amount = min(paid_amount, received_amount)
+
+        if rent_amount <= 0:
+            return None
+
+        return {
+            "payer": payer,
+            "receiver": owner,
+            "amount": rent_amount,
+            "tile": landed_tile,
+        }
 
     def roll(self):
         current_player = self.players[self.engine.turn]
+        self.update_turn_label()
 
         # Handle jail
         if current_player.in_jail:
@@ -608,7 +698,9 @@ class MainWindow(QMainWindow):
         if player.in_jail:
             can_move = try_leave_jail(player, dice1, dice2)
             if not can_move:
+                self.engine.turn = (self.engine.turn + 1) % len(self.players)
                 self.update_status()
+                self.update_turn_label()
                 self.roll_btn.setEnabled(True)
                 return
 
@@ -644,7 +736,14 @@ class MainWindow(QMainWindow):
             print(f"{player.name} passed GO and collected $200!")
 
         tile = self.board.tiles[player.position]
+        rent_events = []
+        payer_money_before = player.money
+        owner_before = tile.owner.money if hasattr(tile, "owner") and tile.owner else None
         tile.on_land(player, self.game)
+
+        rent_event = self._get_rent_event(player, tile, payer_money_before, owner_before)
+        if rent_event:
+            rent_events.append(rent_event)
 
         # Keep whether on_land moved the player before we potentially sync token/UI.
         moved_after_land = (player.position != token.current_tile)
@@ -660,12 +759,27 @@ class MainWindow(QMainWindow):
                 token.current_tile = player.position
                 self.place_token(token, player.position, idx)
                 new_tile = self.board.tiles[player.position]
+                payer_money_before = player.money
+                owner_before = new_tile.owner.money if hasattr(new_tile, "owner") and new_tile.owner else None
                 new_tile.on_land(player, self.game)
+
+                rent_event = self._get_rent_event(player, new_tile, payer_money_before, owner_before)
+                if rent_event:
+                    rent_events.append(rent_event)
 
             self.game.last_card = None
         elif moved_after_land:
             token.current_tile = player.position
             self.place_token(token, player.position, idx)
+
+        for event in rent_events:
+            rent_dlg = RentPaymentDialog(
+                event["payer"],
+                event["receiver"],
+                event["amount"],
+                event["tile"],
+            )
+            rent_dlg.exec()
 
         # Show property purchase dialog
         if isinstance(self.game.pending_property, PropertyTile):
@@ -697,7 +811,9 @@ class MainWindow(QMainWindow):
                 print(f" {player.name} gets another turn!")
         else:
             player.doubles_count = 0
+            self.engine.turn = (self.engine.turn + 1) % len(self.players)
 
+        self.update_turn_label()
         self.roll_btn.setEnabled(True)
 
 
