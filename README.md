@@ -1,95 +1,146 @@
-# Monopoly Game (PyQt6)
+# 🎲 Monopoly Desktop Game (Python, PyQt6)
 
 ## Overview
-A desktop GUI implementation of **Monopoly**, built in **Python** using **PyQt6**. The game renders a board UI, handles dice rolls, player movement, property tiles, and core turn-based gameplay.
+A desktop GUI implementation of **Monopoly**, built in **Python** using **PyQt6**.  
+The project focuses on delivering a clear, interactive, and user-friendly gameplay experience while simplifying complex game mechanics.
 
-## Tech Stack
-- **Python 3**
-- **PyQt6** (GUI)
-- Custom game model classes (e.g., `monopoly_model.py`, `PropertyTile`, etc.)
+---
 
-## Features
-- Graphical board rendered with Qt graphics (`QGraphicsScene`, `QGraphicsView`, items, brushes/pens/fonts)
-- Dice rolling and turn flow
-- Player tokens and movement
-- Property tiles modeled in code (e.g., `PropertyTile`)
-- Dialogs / prompts via Qt widgets (`QMessageBox`, buttons, labels)
+## 🧠 Problem
 
-> Feature completeness depends on what’s currently implemented in the repo (trading, houses/hotels, AI, etc.).
+Traditional Monopoly games can be complex, slow, and overwhelming for casual players.
 
-## Requirements
-- Python **3.10+** recommended
-- PyQt6
+### Goal
+Create a digital version that:
+- Simplifies gameplay
+- Provides clear user guidance
+- Maintains engagement through intuitive interaction
 
-## Installation
+---
 
-### 1) Clone the repository
+## 🚀 Solution
+
+- Designed a turn-based system with a clear and structured flow  
+- Built an interactive graphical interface using PyQt6  
+- Implemented player movement, dice rolling, and property logic  
+- Provided real-time user feedback through dialogs and UI prompts  
+- Focused on usability and clarity over feature overload  
+
+---
+
+## 🧩 Features
+
+- 🎨 Graphical board using Qt Graphics (QGraphicsScene, QGraphicsView)  
+- 🎲 Dice rolling and turn-based progression  
+- 👤 Player tokens and movement  
+- 🏠 Property tile modeling (PropertyTile)  
+- 💬 User prompts via dialogs (QMessageBox)  
+- 🔄 Clear gameplay flow  
+
+---
+
+## 🎯 Product Thinking
+
+This project emphasizes **user experience and usability**.
+
+Key decisions:
+- Simplified game flow to reduce cognitive load  
+- Clear UI feedback to guide user actions  
+- Structured turn system to avoid confusion  
+- Focus on accessibility rather than full rule complexity  
+
+---
+
+## 🛠 Tech Stack
+
+- Python 3  
+- PyQt6  
+- Custom game model classes  
+
+---
+
+## 📈 Future Improvements
+
+- 🤖 AI-based opponents  
+- 🌐 Online multiplayer  
+- 📊 Gameplay analytics  
+- ✨ Improved UX (animations, smoother transitions)  
+
+---
+
+## ⚙️ Installation
+
 ```bash
 git clone https://github.com/ellaro/Monopoly-Game.git
 cd Monopoly-Game
 ```
 
-### 2) (Recommended) Create a virtual environment
-**macOS / Linux**
+### Create virtual environment (recommended)
+
+macOS / Linux
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-**Windows (PowerShell)**
-```powershell
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-### 3) Install dependencies
-If you have a `requirements.txt`:
+Windows
 ```bash
-pip install -r requirements.txt
+py -m venv .venv
+.venv\Scripts\activate
 ```
 
-If you *don’t* have one yet, install PyQt6 directly:
+### Install dependencies
 ```bash
 pip install PyQt6
 ```
 
-## Running the Game
-Run the main entry point (adjust the filename if your entry script is named differently):
+---
+
+## ▶️ Run the Game
+
 ```bash
 python main.py
 ```
 
-## Controls / UI
-Typical UI actions include:
-- **Roll Dice** button to advance gameplay
-- **End Turn** / next player progression
-- Property prompts / notifications shown via dialogs (`QMessageBox`)
+---
 
-(Exact controls depend on the current UI implementation.)
+## 🎮 Controls
 
-## Project Structure (typical)
-This is a *suggested* structure based on the imports you shared:
+- Roll Dice – advance gameplay  
+- Turn progression between players  
+- Dialog prompts guide decisions  
+
+---
+
+## 📂 Project Structure
 
 ```
 Monopoly-Game/
-├── main.py                  # App entry point (PyQt6 window + game loop)
-├── monopoly_model.py        # Game model (e.g., PropertyTile, board data, rules)
-├── assets/                  # Images / icons / sounds (if any)
-├── tests/                   # Unit tests (if any)
-├── requirements.txt         # Dependencies (recommended)
+├── main.py
+├── monopoly_model.py
+├── assets/
+├── tests/
+├── requirements.txt
 └── README.md
 ```
 
-## Development Notes
-- UI layer uses Qt Graphics Framework (`QGraphicsScene`, `QGraphicsItem` subclasses, etc.)
-- Keep game rules/data separated from UI where possible (model vs. view/controller)
+---
 
-## Contributing
-Contributions are welcome:
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/my-change`)
-3. Commit changes
-4. Open a pull request
+## 💡 What I Learned
 
-## License
-Add a `LICENSE` file (MIT/Apache-2.0/etc.) or specify the license here.
+- Designing systems with both technical and user experience considerations  
+- Structuring applications with separation of concerns (logic vs UI)  
+- Translating complex rules into intuitive interactions  
+- Thinking as both a developer and product builder  
+
+---
+
+## 🤝 Contributing
+
+Feel free to fork, improve, and open a pull request!
+
+---
+
+## 📄 License
+
+Add your preferred license (MIT / Apache 2.0 / etc.)
